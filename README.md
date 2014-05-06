@@ -2,7 +2,7 @@ gozk
 ====
 
 参考了
-https://wiki.ubuntu.com/zk
+https://wiki.ubuntu.com/gozk
 和
 https://github.com/samuel/go-zookeeper
 
