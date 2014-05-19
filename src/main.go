@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"time"
 	//"zk"
-	"errors"
+	//"errors"
+	"encoding/binary"
 	"net"
 	"reflect"
 	"runtime"
@@ -12,20 +13,18 @@ import (
 
 func main() {
 	fmt.Println("Zookeeper Client.")
-	//conn, _, err := zk.Connect([]string{"172.19.32.16", "172.19.32.153"}, time.Second)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//fmt.Println(conn)
 
-	zkConn, err := net.DialTimeout("tcp", "172.19.32.16:2181", time.Second)
+	zk, err := Connect([]string{"127.0.0.1:2181"}, time.Second)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("%+v\n", zkConn)
+	fmt.Printf("%+v\n", zk)
+
+	node := zk.Get("/")
+	fmt.Printf("%+v\n", node)
 }
 
-const (
+var (
 	// 第一次请求时，客户端发送16位空字节数组到服务器端
 	emptyPassword = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 )
@@ -38,7 +37,7 @@ type ZK struct {
 	// 会话Id
 	sessionId int64
 	// 会话超时
-	sessionTimeout
+	sessionTimeout time.Duration
 	// 标准库里的TCP连接结构体
 	conn net.Conn
 	// 密码
@@ -47,6 +46,10 @@ type ZK struct {
 	//
 	connectRequest interface{}
 	//
+	getRequest interface{}
+	//
+	getChildrenRequest interface{}
+	//
 	createRequest interface{}
 	//
 	updateRequest interface{}
@@ -54,6 +57,7 @@ type ZK struct {
 	deleteRequest interface{}
 }
 
+//
 func Connect(servers []string, connectTimeout time.Duration) (ZK, error) {
 	zk := ZK{
 		servers:        servers,
@@ -63,33 +67,37 @@ func Connect(servers []string, connectTimeout time.Duration) (ZK, error) {
 		conn:           nil,
 		password:       emptyPassword,
 	}
-	conn, err := net.DialTimeout("tcp", "172.19.32.16:2181", connectTimeout)
-	if err == nil {
-		zk.conn = conn
+	var err error = nil
+	for _, serverip := range servers {
+		conn, err := net.DialTimeout("tcp", serverip, connectTimeout)
+		if err == nil {
+			zk.conn = conn
+			break
+		}
 	}
 	return zk, err
 }
+
+//
 func (zk *ZK) Get(path string) []byte {
-	ret := []byte{"test"}
+	ret := []byte("test")
+
 	return ret
 }
+
+//
 func (zk *ZK) Create(path string, data []byte) {
 
 }
 
 // Utils
-type decoder interface {
-	Decode(buf []byte) (int, error)
-}
-type encoder interface {
-	Encode(buf []byte) (int, error)
-}
 
+//
 func decodePacket(buf []byte, st interface{}) (n int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if e, ok := r.(runtime.Error); ok && e.Error() == "runtime error: slice bounds out of range" {
-				err = ErrShortBuffer
+				//err = ErrShortBuffer
 			} else {
 				panic(r)
 			}
@@ -98,11 +106,12 @@ func decodePacket(buf []byte, st interface{}) (n int, err error) {
 
 	v := reflect.ValueOf(st)
 	if v.Kind() != reflect.Ptr || v.IsNil() {
-		return 0, ErrPtrExpected
+		//return 0, ErrPtrExpected
 	}
 	return decodePacketValue(buf, v)
 }
 
+//
 func decodePacketvalue(buf []byte, v reflect.Value) (int, error) {
 	rv := v
 	knid := v.Kind()
@@ -175,6 +184,7 @@ func decodePacketvalue(buf []byte, v reflect.Value) (int, error) {
 	return n, nil
 }
 
+//
 func encodePacket(buf []byte, st interface{}) (n int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -193,6 +203,7 @@ func encodePacket(buf []byte, st interface{}) (n int, err error) {
 	return encodePacketValue(buf, v)
 }
 
+//
 func encodePacketValue(buf []byte, v reflect.Value) (int, error) {
 	rv := v
 	for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
@@ -220,4 +231,31 @@ func encodePacketValue(buf []byte, v reflect.Value) (int, error) {
 		}
 
 	}
+}
+
+// ACL
+type ACL struct {
+	Perms  int32
+	Scheme string
+	Id     string
+}
+
+//
+func WorldACL(perms int32) []ACL {
+	return []ACL{{prems, "world", "anyone"}}
+}
+
+// Znode's structure
+type ZNode struct {
+	Czxid           int64 //
+	Ctime           int64 //
+	Mzxid           int64 //
+	Mtime           int64 //
+	Pzxid           int64 //
+	DataVersion     int32 // 节点数据修改的版本号
+	ChildrenVersion int32 // 节点的子节点被修改的版本号
+	AclVersion      int32 // 节点的ACL被修改的版本号
+	EphemeralOwner  int64 // 如果不是临时节点，值为0，否则为节点拥有者的会话Id
+	DataLength      int32 // 节点数据长度
+	NumChildren     int32 // 节点的子节点数量
 }
