@@ -1,7 +1,7 @@
 package zk
 
 import (
-	//"fmt"
+	"fmt"
 	"net"
 	//"strconv"
 	//"strings"
@@ -9,10 +9,8 @@ import (
 )
 
 const (
-	bufferSize      = 1536 * 1024
-	eventChanSize   = 6
-	sendChanSize    = 16
-	protectedPrefix = "_c_"
+	bufferSize      = 1536 * 1024 // 缓冲区大小，单位是字节
+	protocolVersion = 0
 )
 
 var (
@@ -20,36 +18,52 @@ var (
 	emptyPassword = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 )
 
+// Zookeeper的数据结构
 type ZK struct {
-	// 服务器地址集合
-	servers []string
-	// 连接超时
-	connectTimeout time.Duration
-	// 会话Id
-	sessionId int64
-	// 会话超时
-	sessionTimeout time.Duration
-	// 标准库里的TCP连接结构体
-	conn net.Conn
-	// 密码
-	password []byte
+	lastZxid           int64
+	servers            []string      // 服务器地址集合
+	connectTimeout     time.Duration // 连接超时
+	sessionId          int64         // 会话Id
+	sessionTimeout     int32         // 会话超时
+	conn               net.Conn      // 标准库里的TCP连接结构体
+	password           []byte        // 密码
+	connectRequest     interface{}   // 连接请求
+	getRequest         interface{}   // 获取数据请求
+	getChildrenRequest interface{}   // 获取所有子节点请求
+	createRequest      interface{}   // 新建节点请求
+	modifyRequest      interface{}   // 修改节点请求
+	deleteRequest      interface{}   // 删除节点请求
+}
 
-	//
-	connectRequest interface{}
-	//
-	getRequest interface{}
-	//
-	getChildrenRequest interface{}
-	//
-	createRequest interface{}
-	//
-	updateRequest interface{}
-	//
-	deleteRequest interface{}
+// Znode的数据结构
+type ZNode struct {
+	Czxid           int64 // 节点被创建的Zxid值
+	Ctime           int64 // 节点被创建的时间
+	Mzxid           int64 // 节点被修改的Zxid值
+	Mtime           int64 // 节点被修改的时间
+	DataVersion     int32 // 节点数据修改的版本号
+	ChildrenVersion int32 // 节点的子节点被修改的版本号
+	AclVersion      int32 // 节点的ACL被修改的版本号
+	DataLength      int32 // 节点数据长度
+	NumChildren     int32 // 节点的子节点数量
+	EphemeralOwner  int64 // 如果不是临时节点，值为0，否则为节点拥有者的会话Id
+}
+
+// 基本请求结构
+type request struct {
+	xid    int32
+	opcode int32
+}
+
+// 基本响应结构
+type response struct {
+	zxid int64
+	err  error
 }
 
 // 连接到服务器
 func Connect(servers []string, connectTimeout time.Duration) (ZK, error) {
+	fmt.Println("connecting...")
 	zk := ZK{
 		servers:        servers,
 		connectTimeout: connectTimeout,
@@ -59,6 +73,7 @@ func Connect(servers []string, connectTimeout time.Duration) (ZK, error) {
 		password:       emptyPassword,
 	}
 	var err error = nil
+	// 尝试所有IP，一有成功连接的，马上跳出
 	for _, serverip := range servers {
 		conn, err := net.DialTimeout("tcp", serverip, connectTimeout)
 		if err == nil {
@@ -66,7 +81,26 @@ func Connect(servers []string, connectTimeout time.Duration) (ZK, error) {
 			break
 		}
 	}
+	// 如果连接成功，则进行认证
+	if zk.conn != nil {
+		buf := make([]byte, 256)
+		zk.connectRequest = &connectRequest{
+			ProtocolVersion: protocolVersion,
+			LastZxidSeen:    zk.lastZxid,
+			TimeOut:         zk.sessionTimeout,
+			SessionID:       zk.sessionId,
+			Passwd:          zk.password,
+		}
+		fmt.Printf("%+v\n", zk.connectRequest)
+		_, err = encodePacket(buf, zk.connectRequest)
+		fmt.Println(buf)
+	}
 	return zk, err
+}
+
+// 断开与服务器的连接
+func (zk *ZK) Close() {
+
 }
 
 // 获取节点数据
