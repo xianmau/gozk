@@ -7,6 +7,7 @@ import (
 	//"strings"
 	"encoding/binary"
 	"io"
+	"sync/atomic"
 	"time"
 )
 
@@ -23,6 +24,7 @@ var (
 // Zookeeper的数据结构
 type ZK struct {
 	lastZxid           int64
+	xid                int32
 	servers            []string      // 服务器地址集合
 	connectTimeout     time.Duration // 连接超时
 	sessionId          int64         // 会话Id
@@ -65,7 +67,6 @@ type response struct {
 
 // 连接到服务器
 func Connect(servers []string, connectTimeout time.Duration) (ZK, error) {
-	fmt.Println("connecting...")
 	zk := ZK{
 		servers:        servers,
 		connectTimeout: connectTimeout,
@@ -95,14 +96,47 @@ func Connect(servers []string, connectTimeout time.Duration) (ZK, error) {
 			Passwd:          zk.password,
 		}
 		var n int
-		n, err = encodePacket(buf, zk.connectRequest)
+		n, err = encodePacket(buf[4:], zk.connectRequest)
 		binary.BigEndian.PutUint32(buf[:4], uint32(n))
-
 		// 发送数据到服务器
 		_, err = zk.conn.Write(buf[:n+4])
-
+		if err != nil {
+			return zk, err
+		}
+		// 读取数据长度
 		_, err = io.ReadFull(zk.conn, buf[:4])
+		if err != nil {
+			return zk, err
+		}
+		n = int(binary.BigEndian.Uint32(buf[:4]))
+		// 如果缓冲区太小，则扩容
+		if cap(buf) < n {
+			buf = make([]byte, n)
+		}
+		// 继续读取数据
+		_, err = io.ReadFull(zk.conn, buf[:n])
+		if err != nil {
+			return zk, err
+		}
+		// 对读到的数据进行解码
+		r := connectResponse{}
+		_, err = decodePacket(buf[:n], &r)
+		if err != nil {
+			return zk, err
+		}
+		if r.SessionId == 0 {
+			zk.sessionId = 0
+			zk.password = emptyPassword
+			zk.lastZxid = 0
+			return zk, ErrSessionExpired
+		}
 
+		if zk.sessionId != r.SessionId {
+			atomic.StoreInt32(&zk.xid, 0)
+		}
+		zk.sessionTimeout = r.TimeOut
+		zk.sessionId = r.SessionId
+		zk.password = r.Passwd
 	}
 	return zk, err
 }
