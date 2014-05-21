@@ -5,6 +5,8 @@ import (
 	"net"
 	//"strconv"
 	//"strings"
+	"encoding/binary"
+	"io"
 	"time"
 )
 
@@ -68,14 +70,15 @@ func Connect(servers []string, connectTimeout time.Duration) (ZK, error) {
 		servers:        servers,
 		connectTimeout: connectTimeout,
 		sessionId:      0,
-		sessionTimeout: 1000000,
+		sessionTimeout: 30000,
 		conn:           nil,
 		password:       emptyPassword,
 	}
+	var conn net.Conn
 	var err error = nil
 	// 尝试所有IP，一有成功连接的，马上跳出
 	for _, serverip := range servers {
-		conn, err := net.DialTimeout("tcp", serverip, connectTimeout)
+		conn, err = net.DialTimeout("tcp", serverip, connectTimeout)
 		if err == nil {
 			zk.conn = conn
 			break
@@ -88,12 +91,18 @@ func Connect(servers []string, connectTimeout time.Duration) (ZK, error) {
 			ProtocolVersion: protocolVersion,
 			LastZxidSeen:    zk.lastZxid,
 			TimeOut:         zk.sessionTimeout,
-			SessionID:       zk.sessionId,
+			SessionId:       zk.sessionId,
 			Passwd:          zk.password,
 		}
-		fmt.Printf("%+v\n", zk.connectRequest)
-		_, err = encodePacket(buf, zk.connectRequest)
-		fmt.Println(buf)
+		var n int
+		n, err = encodePacket(buf, zk.connectRequest)
+		binary.BigEndian.PutUint32(buf[:4], uint32(n))
+
+		// 发送数据到服务器
+		_, err = zk.conn.Write(buf[:n+4])
+
+		_, err = io.ReadFull(zk.conn, buf[:4])
+
 	}
 	return zk, err
 }

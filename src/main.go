@@ -4,11 +4,7 @@ import (
 	"fmt"
 	"time"
 	"zk"
-	//"errors"
-	//"encoding/binary"
 	//"net"
-	//"reflect"
-	//"runtime"
 )
 
 var (
