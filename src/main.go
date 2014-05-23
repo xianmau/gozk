@@ -23,7 +23,7 @@ func main() {
 	}
 	fmt.Printf("## [zk] %+v\n", zk)
 
-	node := zk.Get("/test")
+	node, _ := zk.Get("/test")
 	fmt.Printf("## [ZN] %+v\n", node)
 
 	zk.Create("/test", []byte("test data"))
