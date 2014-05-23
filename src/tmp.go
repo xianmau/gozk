@@ -107,12 +107,6 @@ func Connect(servers []string, recvTimeout time.Duration) (*Conn, <-chan Event, 
 }
 
 func ConnectWithDialer(servers []string, recvTimeout time.Duration, dialer Dialer) (*Conn, <-chan Event, error) {
-	// 事件信道
-	ec := make(chan Event, eventChanSize)
-	if dialer == nil {
-		dialer = net.DialTimeout
-	}
-
 	conn := Conn{
 		dialer:         dialer,
 		servers:        servers,
@@ -141,28 +135,6 @@ func ConnectWithDialer(servers []string, recvTimeout time.Duration, dialer Diale
 	return &conn, ec, nil
 }
 
-func (c *Conn) Close() {
-	close(c.shouldQuit)
-
-	select {
-	case <-c.queueRequest(opClose, &closeRequest{}, &closeResponse{}, nil):
-	case <-time.After(time.Second):
-	}
-}
-
-func (c *Conn) State() State {
-	return State(atomic.LoadInt32((*int32)(&c.state)))
-}
-
-func (c *Conn) setState(state State) {
-	atomic.StoreInt32((*int32)(&c.state), int32(state))
-	select {
-	case c.eventChan <- Event{Type: EventSession, State: state}:
-	default:
-		// panic("zk: event channel full - it must be monitored and never allowed to be full")
-	}
-}
-
 func (c *Conn) connect() {
 	c.serverIndex = (c.serverIndex + 1) % len(c.servers)
 	startIndex := c.serverIndex
@@ -183,6 +155,79 @@ func (c *Conn) connect() {
 			time.Sleep(time.Second)
 		}
 	}
+}
+
+func (c *Conn) authenticate() error {
+	buf := make([]byte, 256) // 这是一个缓冲区
+
+	// connect request
+
+	// 对连接请求编码成字节数组
+	n, err := encodePacket(buf[4:], &connectRequest{
+		ProtocolVersion: protocolVersion,
+		LastZxidSeen:    c.lastZxid,
+		TimeOut:         c.timeout,
+		SessionID:       c.sessionID,
+		Passwd:          c.passwd,
+	})
+	if err != nil {
+		return err
+	}
+
+	binary.BigEndian.PutUint32(buf[:4], uint32(n)) // 在字节数组前4个字节标明了请求的长度
+
+	_, err = c.conn.Write(buf[:n+4]) // conn.Write其实就是向服务器发数据
+	if err != nil {
+		return err
+	}
+
+	// 设置监视，其实先不考虑监视了
+	//c.sendSetWatches()
+
+	// connect response
+
+	// package length
+	_, err = io.ReadFull(c.conn, buf[:4]) // 读取包的大小
+	if err != nil {
+		return err
+	}
+
+	blen := int(binary.BigEndian.Uint32(buf[:4])) // 转成数字，然后判断缓冲区够不够大
+	if cap(buf) < blen {
+		buf = make([]byte, blen)
+	}
+
+	_, err = io.ReadFull(c.conn, buf[:blen]) // 读取数据
+	if err != nil {
+		return err
+	}
+
+	// 把读到的数据解码成结构
+	r := connectResponse{}
+	_, err = decodePacket(buf[:blen], &r)
+	if err != nil {
+		return err
+	}
+	if r.SessionID == 0 {
+		c.sessionID = 0
+		c.passwd = emptyPassword
+		c.lastZxid = 0
+		c.setState(StateExpired) // 设置状态为：超时
+		return ErrSessionExpired // 返回超时错误
+	}
+
+	if c.sessionID != r.SessionID {
+		//客户端和服务器在交互时，有几个特殊的xid，分别的表示含义如下：
+		//Request: xid: -8表示reconnect时重新设置watches, -2表示ping 包，-4表示auth
+		//Response: xid -2 表示ping的响应，-4 表示auth的响应，-1表示本次响应时有watch事件发生
+		atomic.StoreInt32(&c.xid, 0) // 其实就是互斥写操作
+	}
+	c.timeout = r.TimeOut
+	c.sessionID = r.SessionID
+	c.passwd = r.Passwd
+	c.setState(StateHasSession) // 设置状态：已有连接
+
+	return nil
 }
 
 func (c *Conn) loop() {
@@ -260,79 +305,6 @@ func (c *Conn) flushRequests(err error) {
 	}
 	c.requests = make(map[int32]*request)
 	c.requestsLock.Unlock()
-}
-
-func (c *Conn) authenticate() error {
-	buf := make([]byte, 256) // 这是一个缓冲区
-
-	// connect request
-
-	// 对连接请求编码成字节数组
-	n, err := encodePacket(buf[4:], &connectRequest{
-		ProtocolVersion: protocolVersion,
-		LastZxidSeen:    c.lastZxid,
-		TimeOut:         c.timeout,
-		SessionID:       c.sessionID,
-		Passwd:          c.passwd,
-	})
-	if err != nil {
-		return err
-	}
-
-	binary.BigEndian.PutUint32(buf[:4], uint32(n)) // 在字节数组前4个字节标明了请求的长度
-
-	_, err = c.conn.Write(buf[:n+4]) // conn.Write其实就是向服务器发数据
-	if err != nil {
-		return err
-	}
-
-	// 设置监视，其实先不考虑监视了
-	//c.sendSetWatches()
-
-	// connect response
-
-	// package length
-	_, err = io.ReadFull(c.conn, buf[:4]) // 读取包的大小
-	if err != nil {
-		return err
-	}
-
-	blen := int(binary.BigEndian.Uint32(buf[:4])) // 转成数字，然后判断缓冲区够不够大
-	if cap(buf) < blen {
-		buf = make([]byte, blen)
-	}
-
-	_, err = io.ReadFull(c.conn, buf[:blen]) // 读取数据
-	if err != nil {
-		return err
-	}
-
-	// 把读到的数据解码成结构
-	r := connectResponse{}
-	_, err = decodePacket(buf[:blen], &r)
-	if err != nil {
-		return err
-	}
-	if r.SessionID == 0 {
-		c.sessionID = 0
-		c.passwd = emptyPassword
-		c.lastZxid = 0
-		c.setState(StateExpired) // 设置状态为：超时
-		return ErrSessionExpired // 返回超时错误
-	}
-
-	if c.sessionID != r.SessionID {
-		//客户端和服务器在交互时，有几个特殊的xid，分别的表示含义如下：
-		//Request: xid: -8表示reconnect时重新设置watches, -2表示ping 包，-4表示auth
-		//Response: xid -2 表示ping的响应，-4 表示auth的响应，-1表示本次响应时有watch事件发生
-		atomic.StoreInt32(&c.xid, 0) // 其实就是互斥写操作
-	}
-	c.timeout = r.TimeOut
-	c.sessionID = r.SessionID
-	c.passwd = r.Passwd
-	c.setState(StateHasSession) // 设置状态：已有连接
-
-	return nil
 }
 
 func (c *Conn) sendLoop(conn net.Conn, closeChan <-chan bool) error {
@@ -586,4 +558,26 @@ func (c *Conn) Sync(path string) (string, error) {
 	res := &syncResponse{}
 	_, err := c.request(opSync, &syncRequest{Path: path}, res, nil)
 	return res.Path, err
+}
+
+func (c *Conn) Close() {
+	close(c.shouldQuit)
+
+	select {
+	case <-c.queueRequest(opClose, &closeRequest{}, &closeResponse{}, nil):
+	case <-time.After(time.Second):
+	}
+}
+
+func (c *Conn) State() State {
+	return State(atomic.LoadInt32((*int32)(&c.state)))
+}
+
+func (c *Conn) setState(state State) {
+	atomic.StoreInt32((*int32)(&c.state), int32(state))
+	select {
+	case c.eventChan <- Event{Type: EventSession, State: state}:
+	default:
+		// panic("zk: event channel full - it must be monitored and never allowed to be full")
+	}
 }

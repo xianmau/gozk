@@ -2,12 +2,13 @@ package zk
 
 import ()
 
+// 请求包头
 type requestHeader struct {
 	Xid    int32
 	Opcode int32
 }
 
-// 基本请求结构
+// 请求结构
 type request struct {
 	xid    int32
 	opcode int32
@@ -16,9 +17,10 @@ type request struct {
 	recvStruct interface{}
 	recvChan   chan response
 
-	recvFunc func(*request, *responseHeader, err)
+	recvFunc func(*request, *responseHeader, error)
 }
 
+// 关闭连接请求
 type closeRequest struct{}
 
 type connectRequest struct {
@@ -29,11 +31,13 @@ type connectRequest struct {
 	Passwd          []byte
 }
 
+// 获取节点数据请求
 type getDataRequest struct {
 	Path  string
 	Watch bool
 }
 
+// 创建新节点请求
 type createRequest struct {
 	Path  string
 	Data  []byte

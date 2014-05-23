@@ -5,10 +5,13 @@ import (
 )
 
 // 错误信息
-const (
+var (
 	ErrUnhandledFieldType = errors.New("zk: unhandled field type")
 	ErrPtrExpected        = errors.New("zk: encode/decode expect a non-nil pointer to struct")
 	ErrShortBuffer        = errors.New("zk: buffer too small")
+
+	//所有IP不通，说明整个zone挂了
+	ErrZoneDown = errors.New("zk: zone down or all ips faild")
 
 	ErrConnectionClosed        = errors.New("zk: connection closed")
 	ErrUnknown                 = errors.New("zk: unknown error")

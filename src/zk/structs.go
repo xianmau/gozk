@@ -1,23 +1,30 @@
 package zk
 
-import ()
+import (
+	"net"
+	"sync"
+	"time"
+)
 
 // Zookeeper的数据结构
 type ZK struct {
-	lastZxid           int64
-	xid                int32
-	servers            []string      // 服务器地址集合
-	connectTimeout     time.Duration // 连接超时
-	sessionId          int64         // 会话Id
-	sessionTimeout     int32         // 会话超时
-	conn               net.Conn      // 标准库里的TCP连接结构体
-	password           []byte        // 密码
-	connectRequest     interface{}   // 连接请求
-	getRequest         interface{}   // 获取数据请求
-	getChildrenRequest interface{}   // 获取所有子节点请求
-	createRequest      interface{}   // 新建节点请求
-	modifyRequest      interface{}   // 修改节点请求
-	deleteRequest      interface{}   // 删除节点请求
+	lastZxid       int64         // 最后修改的节点
+	xid            int32         // 用来标记请求的版本
+	servers        []string      // 服务器地址集合
+	serversIndex   int           // 当前连接的服务器序号
+	conn           net.Conn      // 标准库里的TCP连接结构体
+	connectTimeout time.Duration // 连接超时
+	sessionId      int64         // 会话Id
+	sessionTimeout int32         // 会话超时
+	password       []byte        // 密码
+	state          int32         // 连接状态
+
+	pingInterval time.Duration // 心跳时间，一般为接收超时的一半
+	recvTimeout  time.Duration // 接收超时，一般为心跳的两倍
+
+	sendChan     chan *request      // 请求队列，客户端把要发送的请求丢到这里，可以实现同步
+	requests     map[int32]*request // 请求映射，在请求结构中有Xid，可用来对应哪个请求
+	requestsLock sync.Mutex         // 请求锁
 }
 
 // Znode状态的数据结构
