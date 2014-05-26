@@ -2,7 +2,6 @@ package zk
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -11,39 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 )
-
-// API:Connect
-func Connect(servers []string, recvTimeout time.Duration) *ZK {
-	// 处理没有带端口号的地址
-	for index, serverip := range servers {
-		if !strings.ContainsRune(serverip, rune(':')) {
-			servers[index] = fmt.Sprintf("%s:%d", serverip, defaultPort)
-		}
-	}
-	// 初始化一个实例
-	// 然后客户端就一直用这个实例来对服务器进行访问
-	// 也就是相当于客户端的全局变量
-	zk := ZK{
-		servers:           servers,                                  // 服务器地址集合
-		serversIndex:      0,                                        // 连接到的服务器下标
-		conn:              nil,                                      //
-		connectTimeout:    1 * time.Second,                          // 连接超时为1秒
-		sessionId:         0,                                        // 会话Id，第一次连接会重服务端获取
-		sessionTimeout:    86400,                                    // 会话超时为一天，呵呵
-		password:          emptyPassword,                            // 密码
-		state:             StateDisconnected,                        // 连接状态
-		heartbeatInterval: time.Duration((int64(recvTimeout) >> 1)), // 心跳周期，为接收超时的一半
-		recvTimeout:       recvTimeout,                              // 接收超时
-		sendChan:          make(chan *request, sendChanSize),        // 消息队列，队列里的每个消息为一个请求
-		requests:          make(map[int32]*request),                 // 请求映射
-	}
-	// 开个协程来连接
-	go func() {
-		zk.connect(servers, recvTimeout)
-	}()
-
-	return &zk
-}
 
 // 进行TCP拔号
 func (zk *ZK) dial() error {
@@ -117,67 +83,6 @@ func (zk *ZK) authenticate() error {
 	return nil
 }
 
-// 连接到ZK服务器，如果成功，返回一个ZK实例
-func (zk *ZK) connect(servers []string, recvTimeout time.Duration) {
-	// 先是个无限循环，这样某台机宕掉了，程序就会尝试其它机
-	// 不过这样的话，如果所有机都宕了（所有IP不通），那不就是死循环了？！
-	// 所以先这样搞，就是将主机列表都扫过一遍后如果还没成，就退出算了，当作zone挂了
-	for {
-		// 如果所有IP都没拔通，则报错退出
-		err := zk.dial()
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		// 拔通则进行认证
-		err = zk.authenticate()
-		// 判断是什么错误
-		switch {
-		case err != nil && zk.conn != nil: // 拔号成功，认证失败，关闭TCP连接，准备重试
-			zk.conn.Close()
-		case err == nil: // 认证成功
-			// 创建一个关闭信道，然后丢到sendLoop里，在那里通过select等待关闭
-			closeChan := make(chan bool)
-			// 采用锁来同步，WaitGroup，就是等待执行完一组方法后，才继续执行
-			// 大概流程就是，客户端呢至少不断发送心跳包到服务器，然后还有什么查看啊添加啊删除啊什么的
-			// 同时，客户端从服务器那边获取响应，然后处理
-			// 这个过程按理说是无限进行的，因为至少有心跳
-			// 如果出现超时什么的就会停止，跑到Wait()后面继续执行
-			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
-				zk.sendLoop(closeChan)
-				zk.conn.Close()
-				wg.Done()
-			}()
-			wg.Add(1)
-			go func() {
-				err = zk.recvLoop()
-				if err == nil {
-					panic("zk: recvLoop should never return nil error")
-				}
-				close(closeChan)
-				wg.Done()
-			}()
-			wg.Wait()
-		}
-
-		zk.state = StateDisconnected // 来到这里说明要不认证失败，要不超时了
-
-		// 如果不是文件结束或者不是会话超时或者连接关闭，就记录一条日志
-		if err != io.EOF && err != ErrSessionExpired && !strings.Contains(err.Error(), "use of closed network connection") {
-			log.Println(err)
-		}
-
-		select {
-		case <-zk.shouldQuit:
-			zk.flushRequests(ErrClosing)
-			return
-		default: // 这句是让select变成非阻塞的
-		}
-	}
-}
-
 // 发送错误信息到所有正在准备的请求，并清空请求映射
 func (zk *ZK) flushRequests(err error) {
 	zk.requestsLock.Lock()
@@ -235,7 +140,7 @@ func (zk *ZK) sendLoop(closeChan <-chan bool) error {
 				return err
 			}
 		case <-heartbeetTicker.C:
-			packetLen, err := encodePacket(buf[4:], &requestHeader{Xid: -2, Opcode: opPing})
+			packetLen, err := encodePacket(buf[4:], &requestHeader{xid: -2, opcode: opPing})
 			if err != nil {
 				panic("zk: opPing should never fail to serialize")
 			}
@@ -318,37 +223,21 @@ func (zk *ZK) recvLoop() error {
 	return nil
 }
 
-// 断开与服务器的连接
-func (zk *ZK) close() {
-	// TODO:
-}
-
-// 获取节点数据
-func (zk *ZK) get(path string) ([]byte, *Stat, error) {
-	res := &getDataResponse{}
-
-	_, err := zk.request(opGetData, &getDataRequest{Path: path, Watch: false}, res, nil)
-	return res.Data, &res.Stat, err
-}
-
-// 新建一个节点
-func (zk *ZK) create(path string, data []byte) {
-	// TODO:
-}
-
+// 请求队列
 func (zk *ZK) queueRequest(opcode int32, req interface{}, res interface{}, recvFunc func(*request, *responseHeader, error)) <-chan response {
 	rq := &request{
 		xid:        zk.nextXid(),
 		opcode:     opcode,
 		packet:     req,
 		recvStruct: res,
-		recvChan:   make(chan response, 1),
+		recvChan:   make(chan response, 1), // 信道大小为1，也就保证一个请求最多一个响应
 		recvFunc:   recvFunc,
 	}
 	zk.sendChan <- rq
 	return rq.recvChan
 }
 
+// 当一个请求来时，直接将它丢进请求队列中
 func (zk *ZK) request(opcode int32, req interface{}, res interface{}, recvFunc func(*request, *responseHeader, error)) (int64, error) {
 	r := <-zk.queueRequest(opcode, req, res, recvFunc)
 	return r.zxid, r.err
@@ -357,4 +246,117 @@ func (zk *ZK) request(opcode int32, req interface{}, res interface{}, recvFunc f
 // 类似自增Id，用来对应请求和响应
 func (zk *ZK) nextXid() int32 {
 	return atomic.AddInt32(&zk.xid, 1)
+}
+
+// 连接到ZK服务器，如果成功，返回一个ZK实例
+func (zk *ZK) connect(servers []string, recvTimeout time.Duration) {
+	// 先是个无限循环，这样某台机宕掉了，程序就会尝试其它机
+	// 不过这样的话，如果所有机都宕了（所有IP不通），那不就是死循环了？！
+	// 所以先这样搞，就是将主机列表都扫过一遍后如果还没成，就退出算了，当作zone挂了
+	for {
+		// 如果所有IP都没拔通，则报错退出
+		err := zk.dial()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		// 拔通则进行认证
+		err = zk.authenticate()
+		// 判断是什么错误
+		switch {
+		case err != nil && zk.conn != nil: // 拔号成功，认证失败，关闭TCP连接，准备重试
+			zk.conn.Close()
+		case err == nil: // 认证成功
+			// 创建一个关闭信道，然后丢到sendLoop里，在那里通过select等待关闭
+			closeChan := make(chan bool)
+			// 采用锁来同步，WaitGroup，就是等待执行完一组方法后，才继续执行
+			// 大概流程就是，客户端至少不断发送心跳包到服务器，然后还有什么查看啊添加啊删除啊什么的
+			// 同时，客户端从服务器那边获取响应，然后处理
+			// 这个过程按理说是无限进行的，因为至少有心跳
+			// 如果出现超时什么的就会停止，跑到Wait()后面继续执行
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				zk.sendLoop(closeChan)
+				zk.conn.Close()
+				wg.Done()
+			}()
+			wg.Add(1)
+			go func() {
+				err = zk.recvLoop()
+				if err == nil {
+					panic("zk: recvLoop should never return nil error")
+				}
+				close(closeChan)
+				wg.Done()
+			}()
+			wg.Wait()
+		}
+
+		zk.state = StateDisconnected // 来到这里说明要不认证失败，要不超时了
+
+		// 如果不是文件结束或者不是会话超时或者连接关闭，就记录一条日志
+		if err != io.EOF && err != ErrSessionExpired && !strings.Contains(err.Error(), "use of closed network connection") {
+			log.Println(err)
+		}
+
+		select {
+		case <-zk.shouldQuit:
+			zk.flushRequests(ErrClosing)
+			return
+		default: // 这句是让select变成非阻塞的
+		}
+	}
+}
+
+// 断开与服务器的连接
+func (zk *ZK) close() {
+	close(zk.shouldQuit) // 关闭退出信道
+	select {
+	case <-zk.queueRequest(opClose, &closeRequest{}, &closeResponse{}, nil):
+	case <-time.After(time.Second):
+	}
+}
+
+// 判断节点是否存在
+func (zk *ZK) exists(path string) (bool, *Stat, error) {
+	res := &existsResponse{}
+	_, err := zk.request(opExists, &existsRequest{Path: path, Watch: false}, res, nil)
+	exists := true
+	if err == ErrNoNode {
+		exists = false
+		err = nil
+	}
+	return exists, &res.Stat, err
+}
+
+// 获取节点数据
+func (zk *ZK) get(path string) ([]byte, *Stat, error) {
+	res := &getDataResponse{}
+	_, err := zk.request(opGetData, &getDataRequest{Path: path, Watch: false}, res, nil)
+	return res.Data, &res.Stat, err
+}
+
+func (zk *ZK) set(path string, data []byte, version int32) (*Stat, error) {
+	res := &setDataResponse{}
+	_, err := zk.request(opSetData, &setDataRequest{path, data, version}, res, nil)
+	return &res.Stat, err
+}
+
+func (zk *ZK) children(path string) ([]string, error) {
+	res := &getChildrenResponse{}
+	_, err := zk.request(opGetChildren, &getChildrenRequest{Path: path}, res, nil)
+	return res.Children, err
+}
+
+// 新建一个节点
+func (zk *ZK) create(path string, data []byte, acl []ACL, flags int32) (string, error) {
+	res := &createResponse{}
+	_, err := zk.request(opCreate, &createRequest{path, data, acl, flags}, res, nil)
+	return res.Path, err
+}
+
+func (zk *ZK) delete(path string, version int32) error {
+	_, err := zk.request(opDelete, &deleteRequest{path, version}, &deleteResponse{}, nil)
+	return err
 }

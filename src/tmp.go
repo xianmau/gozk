@@ -555,12 +555,6 @@ func (c *Conn) SetACL(path string, acl []ACL, version int32) (*Stat, error) {
 	return &res.Stat, err
 }
 
-func (c *Conn) Sync(path string) (string, error) {
-	res := &syncResponse{}
-	_, err := c.request(opSync, &syncRequest{Path: path}, res, nil)
-	return res.Path, err
-}
-
 func (c *Conn) Close() {
 	close(c.shouldQuit)
 

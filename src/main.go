@@ -18,13 +18,14 @@ func main() {
 	fmt.Println("Zookeeper Client Start.")
 	fmt.Println("-----------------------")
 
-	zk := zk.Connect(TESTIP, time.Second)
+	z := zk.Connect(TESTIP, time.Second)
 
-	//time.Sleep(time.Second)
-	fmt.Printf("## [zk] %+v\n", zk)
+	time.Sleep(time.Second)
+	fmt.Printf("## [zk] %+v\n", z)
 
-	//node, _ := zk.Get("/test")
-	//fmt.Printf("## [ZN] %+v\n", node)
+	path, _ := z.Create("/test2", []byte("test data"), zk.WorldACL(zk.PermAll), 0)
 
-	//zk.Create("/test", []byte("test data"))
+	fmt.Printf("## [ZN] %+v\n", string(path))
+	node, _, _ := z.Get("/test2")
+	fmt.Printf("## [ZN] %+v\n", string(node))
 }

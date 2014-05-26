@@ -4,24 +4,19 @@ import ()
 
 // 请求包头
 type requestHeader struct {
-	Xid    int32 // -8表示重连时重新设置watches，-2表示ping包，-4表示auth包
-	Opcode int32
+	xid    int32 // -8表示重连时重新设置watches，-2表示ping包，-4表示auth包
+	opcode int32
 }
 
 // 请求结构
 type request struct {
-	xid    int32
-	opcode int32
-
+	xid        int32
+	opcode     int32
 	packet     interface{}
 	recvStruct interface{}
 	recvChan   chan response
-
-	recvFunc func(*request, *responseHeader, error)
+	recvFunc   func(*request, *responseHeader, error)
 }
-
-// 关闭连接请求
-type closeRequest struct{}
 
 // 连接请求
 type connectRequest struct {
@@ -32,8 +27,14 @@ type connectRequest struct {
 	Passwd          []byte
 }
 
-// 获取节点数据请求
-type getDataRequest struct {
+// 关闭连接请求
+type closeRequest struct{}
+
+// ping请求
+type pingRequest struct{}
+
+// 判断存在请求
+type existsRequest struct {
 	Path  string
 	Watch bool
 }
@@ -44,4 +45,28 @@ type createRequest struct {
 	Data  []byte
 	Acl   []ACL
 	Flags int32
+}
+
+// 获取子节点请求
+type getChildrenRequest struct {
+	Path string
+}
+
+// 获取节点数据请求
+type getDataRequest struct {
+	Path  string
+	Watch bool
+}
+
+// 设置节点数据请求
+type setDataRequest struct {
+	Path    string
+	Data    []byte
+	Version int32
+}
+
+// 删除请求
+type deleteRequest struct {
+	Path    string
+	Version int32
 }
