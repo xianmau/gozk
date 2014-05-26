@@ -19,12 +19,14 @@ type ZK struct {
 	password       []byte        // 密码
 	state          int32         // 连接状态
 
-	pingInterval time.Duration // 心跳时间，一般为接收超时的一半
-	recvTimeout  time.Duration // 接收超时，一般为心跳的两倍
+	heartbeatInterval time.Duration // 心跳时间，一般为接收超时的一半
+	recvTimeout       time.Duration // 接收超时，一般为心跳的两倍
 
+	shouldQuit   chan bool          // 是否退出
 	sendChan     chan *request      // 请求队列，客户端把要发送的请求丢到这里，可以实现同步
-	requests     map[int32]*request // 请求映射，在请求结构中有Xid，可用来对应哪个请求
+	requests     map[int32]*request // 正在准备的请求映射，在请求结构中有Xid，可用来对应哪个请求
 	requestsLock sync.Mutex         // 请求锁
+
 }
 
 // Znode状态的数据结构

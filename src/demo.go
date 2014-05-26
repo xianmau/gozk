@@ -2,14 +2,17 @@ package main
 
 import (
 	"fmt"
+	"time"
 )
 
-const (
-	a = iota
-	c
-	d
-)
+func tick(ch <-chan time.Time) {
+	for t := range ch {
+		fmt.Println(t)
+	}
+}
 
 func main() {
-	fmt.Println(a, c, d)
+	ticker := time.NewTicker(time.Second)
+	go tick(ticker.C)
+	time.Sleep(5 * time.Second)
 }

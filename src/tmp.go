@@ -313,6 +313,8 @@ func (c *Conn) sendLoop(conn net.Conn, closeChan <-chan bool) error {
 
 	buf := make([]byte, bufferSize)
 	for {
+		// select会阻塞，当某个条件符合时，就执行那个一块，如果有多个符合，随机执行
+		// 如果要变成非阻塞的，可以加default分支
 		select {
 		case req := <-c.sendChan: // sendChan是请求队列，这里获取一个请求然后执行
 			header := &requestHeader{req.xid, req.opcode} // 请求包头
@@ -333,7 +335,6 @@ func (c *Conn) sendLoop(conn net.Conn, closeChan <-chan bool) error {
 			binary.BigEndian.PutUint32(buf[:4], uint32(n))
 
 			c.requestsLock.Lock()
-			// 感觉有select就是为了把线程阻塞的样子
 			select {
 			case <-closeChan:
 				req.recvChan <- response{-1, ErrConnectionClosed}
@@ -352,7 +353,7 @@ func (c *Conn) sendLoop(conn net.Conn, closeChan <-chan bool) error {
 				conn.Close()
 				return err
 			}
-		case <-pingTicker.C:
+		case <-pingTicker.C: // 发心跳包
 			n, err := encodePacket(buf[4:], &requestHeader{Xid: -2, Opcode: opPing})
 			if err != nil {
 				panic("zk: opPing should never fail to serialize")

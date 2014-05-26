@@ -9,7 +9,8 @@ import (
 
 var (
 	TESTIP = []string{
-		"172.19.32.39:2181",
+		"172.19.32.39",
+		//"192.168.56.101",
 	}
 )
 
@@ -17,14 +18,13 @@ func main() {
 	fmt.Println("Zookeeper Client Start.")
 	fmt.Println("-----------------------")
 
-	zk, err := zk.Connect(TESTIP, time.Second)
-	if err != nil {
-		panic(err)
-	}
+	zk := zk.Connect(TESTIP, time.Second)
+
+	//time.Sleep(time.Second)
 	fmt.Printf("## [zk] %+v\n", zk)
 
-	node, _ := zk.Get("/test")
-	fmt.Printf("## [ZN] %+v\n", node)
+	//node, _ := zk.Get("/test")
+	//fmt.Printf("## [ZN] %+v\n", node)
 
-	zk.Create("/test", []byte("test data"))
+	//zk.Create("/test", []byte("test data"))
 }

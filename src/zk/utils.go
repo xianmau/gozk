@@ -15,7 +15,7 @@ func encodePacket(buf []byte, st interface{}) (n int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if e, ok := r.(runtime.Error); ok && e.Error() == "runtime error: slice bounds out of range" {
-				err = ErrShortBuffer
+
 			} else {
 				panic(r)
 			}

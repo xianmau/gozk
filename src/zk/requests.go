@@ -4,7 +4,7 @@ import ()
 
 // 请求包头
 type requestHeader struct {
-	Xid    int32
+	Xid    int32 // -8表示重连时重新设置watches，-2表示ping包，-4表示auth包
 	Opcode int32
 }
 
@@ -13,7 +13,7 @@ type request struct {
 	xid    int32
 	opcode int32
 
-	pkt        interface{}
+	packet     interface{}
 	recvStruct interface{}
 	recvChan   chan response
 
@@ -23,6 +23,7 @@ type request struct {
 // 关闭连接请求
 type closeRequest struct{}
 
+// 连接请求
 type connectRequest struct {
 	ProtocolVersion int32
 	LastZxidSeen    int64
