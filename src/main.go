@@ -1,31 +1,83 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 	"zk"
-	//"net"
 )
 
 var (
 	TESTIP = []string{
-		"172.19.32.39",
-		//"192.168.56.101",
+		//"172.19.32.39",
+		"192.168.56.101",
 	}
 )
 
 func main() {
-	fmt.Println("Zookeeper Client Start.")
-	fmt.Println("-----------------------")
+	fmt.Println("You can use the follow command.")
+	fmt.Println("create path data")
+	fmt.Println("set path data")
+	fmt.Println("exist path")
+	fmt.Println("get path")
+	fmt.Println("ls path")
+	fmt.Println("del path")
+	fmt.Println("Or you will enter 'quit' to exit.")
 
-	z := zk.Connect(TESTIP, time.Second)
+	conn := zk.Connect(TESTIP, time.Second)
+	defer conn.Close()
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		data, _, _ := reader.ReadLine()
+		cmd := string(data)
+		s := strings.Split(cmd, " ")
+		if len(s) == 1 {
+			if s[0] == "quit" {
+				return
+			}
+		} else if len(s) == 2 {
+			if s[0] == "ls" {
+				children, err := conn.Children(s[1])
+				if err != nil {
+					panic(err)
+				}
+				fmt.Printf("List children of [%s]: %+v\n", s[1], children)
+			} else if s[0] == "get" {
+				data, _, err := conn.Get(s[1])
+				if err != nil {
+					panic(err)
+				}
+				fmt.Printf("Data of [%s]: %+v\n", s[1], string(data))
+			} else if s[0] == "exist" {
+				flag, _, err := conn.Exists(s[1])
+				if err != nil {
+					panic(err)
+				}
+				fmt.Printf("[%s] exist: %+v\n", s[1], flag)
+			} else if s[0] == "del" {
+				err := conn.Delete(s[1], 0)
+				if err != nil {
+					panic(err)
+				}
+				fmt.Printf("[%s] delete!\n", s[1])
+			}
+		} else if len(s) == 3 {
+			if s[0] == "create" {
+				path, err := conn.Create(s[1], []byte(s[2]), zk.WorldACL(zk.PermAll), 0)
+				if err != nil {
+					panic(err)
+				}
+				fmt.Printf("[%s] created!\n", path)
+			} else if s[0] == "set" {
+				_, err := conn.Set(s[1], []byte(s[2]), 0)
+				if err != nil {
+					panic(err)
+				}
+				fmt.Printf("[%s] set!\n", s[1])
+			}
+		}
+	}
 
-	time.Sleep(time.Second)
-	fmt.Printf("## [zk] %+v\n", z)
-
-	path, _ := z.Create("/test2", []byte("test data"), zk.WorldACL(zk.PermAll), 0)
-
-	fmt.Printf("## [ZN] %+v\n", string(path))
-	node, _, _ := z.Get("/test2")
-	fmt.Printf("## [ZN] %+v\n", string(node))
 }

@@ -337,15 +337,17 @@ func (zk *ZK) get(path string) ([]byte, *Stat, error) {
 	return res.Data, &res.Stat, err
 }
 
+// 设置节点数据
 func (zk *ZK) set(path string, data []byte, version int32) (*Stat, error) {
 	res := &setDataResponse{}
 	_, err := zk.request(opSetData, &setDataRequest{path, data, version}, res, nil)
 	return &res.Stat, err
 }
 
+// 获取子节点
 func (zk *ZK) children(path string) ([]string, error) {
-	res := &getChildrenResponse{}
-	_, err := zk.request(opGetChildren, &getChildrenRequest{Path: path}, res, nil)
+	res := &getChildren2Response{}
+	_, err := zk.request(opGetChildren2, &getChildren2Request{Path: path, Watch: false}, res, nil)
 	return res.Children, err
 }
 
@@ -356,6 +358,7 @@ func (zk *ZK) create(path string, data []byte, acl []ACL, flags int32) (string, 
 	return res.Path, err
 }
 
+// 删除一个节点
 func (zk *ZK) delete(path string, version int32) error {
 	_, err := zk.request(opDelete, &deleteRequest{path, version}, &deleteResponse{}, nil)
 	return err

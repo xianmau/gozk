@@ -43,8 +43,9 @@ type createResponse struct {
 }
 
 // 获取子节点请求响应
-type getChildrenResponse struct {
+type getChildren2Response struct {
 	Children []string
+	Stat     Stat
 }
 
 // 获取节点数据请求响应

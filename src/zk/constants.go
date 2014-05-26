@@ -3,7 +3,7 @@ package zk
 const (
 	protocolVersion = 0           // 协议版本
 	defaultPort     = 2181        // 默认端口
-	bufferSize      = 1536 * 1024 // 缓冲区大小，单位是字节
+	bufferSize      = 1024 * 1024 // 缓冲区大小，单位是字节
 	sendChanSize    = 16          // 消息队列的大小
 )
 
@@ -50,10 +50,10 @@ const (
 
 // ACL的权限值
 const (
-	PermRead    = 1 << iota //读权限，可以获取当前节点的数据，可以列出当前节点所有的子节点
-	PermWrite               //写权限，可以向当前node写数据
-	PermCreate              //创建权限，可以在在当前节点下创建子节点
-	PermDeleted             //删除权限，可以删除当前的节点
-	PermAdmin               //管理权限，可以设置当前节点的权限
-	PermAll     = 0x1f
+	PermRead    = 1 << iota // 读权限，可以获取当前节点的数据，可以列出当前节点所有的子节点
+	PermWrite               // 写权限，可以向当前node写数据
+	PermCreate              // 创建权限，可以在在当前节点下创建子节点
+	PermDeleted             // 删除权限，可以删除当前的节点
+	PermAdmin               // 管理权限，可以设置当前节点的权限
+	PermAll     = 0x1f      // 所有权限
 )

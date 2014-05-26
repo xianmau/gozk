@@ -28,6 +28,7 @@ func Connect(servers []string, recvTimeout time.Duration) *ZK {
 		state:             StateDisconnected,                        // 连接状态
 		heartbeatInterval: time.Duration((int64(recvTimeout) >> 1)), // 心跳周期，为接收超时的一半
 		recvTimeout:       recvTimeout,                              // 接收超时
+		shouldQuit:        make(chan bool),                          //
 		sendChan:          make(chan *request, sendChanSize),        // 消息队列，队列里的每个消息为一个请求
 		requests:          make(map[int32]*request),                 // 请求映射
 	}
@@ -43,7 +44,7 @@ func (zk *ZK) Close() {
 }
 
 func (zk *ZK) Exists(path string) (bool, *Stat, error) {
-	return zk.Exists(path)
+	return zk.exists(path)
 }
 
 func (zk *ZK) Get(path string) ([]byte, *Stat, error) {

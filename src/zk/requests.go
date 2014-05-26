@@ -48,8 +48,9 @@ type createRequest struct {
 }
 
 // 获取子节点请求
-type getChildrenRequest struct {
-	Path string
+type getChildren2Request struct {
+	Path  string
+	Watch bool
 }
 
 // 获取节点数据请求
