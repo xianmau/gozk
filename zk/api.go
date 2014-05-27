@@ -43,30 +43,52 @@ func (zk *ZK) Close() {
 	zk.close()
 }
 
+// 测试节点是否存在
 func (zk *ZK) Exists(path string) (bool, error) {
 	flag, _, err := zk.exists(path)
 	return flag, err
 }
 
+// 获取节点数据
 func (zk *ZK) Get(path string) (string, error) {
 	data, _, err := zk.get(path)
 	return string(data), err
 }
 
-func (zk *ZK) Set(path string, data string, version int32) error {
-	_, err := zk.set(path, []byte(data), version)
+// 设置节点数据
+func (zk *ZK) Set(path string, data string) error {
+	_, err := zk.set(path, []byte(data), -1)
 	return err
 }
 
+// 获取子节点列表
 func (zk *ZK) Children(path string) ([]string, error) {
 	return zk.children(path)
 }
 
+// 新建
 func (zk *ZK) Create(path string, data string, acl []ACL, flags int32) error {
 	_, err := zk.create(path, []byte(data), acl, flags)
 	return err
 }
 
-func (zk *ZK) Delete(path string, version int32) error {
-	return zk.delete(path, version)
+// 删除
+func (zk *ZK) Delete(path string) error {
+	return zk.delete(path, -1)
+}
+
+// 递归删除
+func (zk *ZK) DeleteRecur(path string) error {
+	if flag, err := zk.Exists(path); err == nil && !flag {
+		return err
+	}
+	children, err := zk.Children(path)
+	if err != nil {
+		return err
+	}
+	for _, znode := range children {
+		sub_znode := path + "/" + znode
+		zk.DeleteRecur(sub_znode)
+	}
+	return zk.Delete(path)
 }
