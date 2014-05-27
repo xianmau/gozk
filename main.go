@@ -17,7 +17,7 @@ var (
 )
 
 func main() {
-	fmt.Println("You can use the follow command.")
+	fmt.Println("You can use the following commands:")
 	fmt.Println("create path data")
 	fmt.Println("set path data")
 	fmt.Println("exist path")

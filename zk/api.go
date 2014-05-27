@@ -43,24 +43,28 @@ func (zk *ZK) Close() {
 	zk.close()
 }
 
-func (zk *ZK) Exists(path string) (bool, *Stat, error) {
-	return zk.exists(path)
+func (zk *ZK) Exists(path string) (bool, error) {
+	flag, _, err := zk.exists(path)
+	return flag, err
 }
 
-func (zk *ZK) Get(path string) ([]byte, *Stat, error) {
-	return zk.get(path)
+func (zk *ZK) Get(path string) (string, error) {
+	data, _, err := zk.get(path)
+	return string(data), err
 }
 
-func (zk *ZK) Set(path string, data []byte, version int32) (*Stat, error) {
-	return zk.set(path, data, version)
+func (zk *ZK) Set(path string, data string, version int32) error {
+	_, err := zk.set(path, []byte(data), version)
+	return err
 }
 
 func (zk *ZK) Children(path string) ([]string, error) {
 	return zk.children(path)
 }
 
-func (zk *ZK) Create(path string, data []byte, acl []ACL, flags int32) (string, error) {
-	return zk.create(path, data, acl, flags)
+func (zk *ZK) Create(path string, data string, acl []ACL, flags int32) error {
+	_, err := zk.create(path, []byte(data), acl, flags)
+	return err
 }
 
 func (zk *ZK) Delete(path string, version int32) error {
