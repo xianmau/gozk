@@ -1,10 +1,10 @@
 package zk
 
 const (
-	protocolVersion = 0           // 协议版本
-	defaultPort     = 2181        // 默认端口
-	bufferSize      = 1024 * 1024 // 缓冲区大小，单位是字节
-	sendChanSize    = 16          // 消息队列的大小
+	protocolVersion = 0            // 协议版本
+	defaultPort     = 2181         // 默认端口
+	bufferSize      = 10240 * 1024 // 缓冲区大小，单位是字节
+	sendChanSize    = 16           // 消息队列的大小
 )
 
 var (

@@ -11,8 +11,8 @@ import (
 
 var (
 	TESTIP = []string{
-		//"172.19.32.39",
-		"192.168.56.101",
+		"172.19.32.16",
+		//"192.168.56.101",
 	}
 )
 
@@ -45,19 +45,19 @@ func main() {
 				}
 				fmt.Printf("List children of [%s]: %+v\n", s[1], children)
 			} else if s[0] == "get" {
-				data, _, err := conn.Get(s[1])
+				data, err := conn.Get(s[1])
 				if err != nil {
 					panic(err)
 				}
 				fmt.Printf("Data of [%s]: %+v\n", s[1], string(data))
 			} else if s[0] == "exist" {
-				flag, _, err := conn.Exists(s[1])
+				flag, err := conn.Exists(s[1])
 				if err != nil {
 					panic(err)
 				}
 				fmt.Printf("[%s] exist: %+v\n", s[1], flag)
 			} else if s[0] == "del" {
-				err := conn.Delete(s[1], 0)
+				err := conn.Delete(s[1])
 				if err != nil {
 					panic(err)
 				}
@@ -65,13 +65,13 @@ func main() {
 			}
 		} else if len(s) == 3 {
 			if s[0] == "create" {
-				path, err := conn.Create(s[1], []byte(s[2]), zk.WorldACL(zk.PermAll), 0)
+				err := conn.Create(s[1], s[2], zk.WorldACL(zk.PermAll), 0)
 				if err != nil {
 					panic(err)
 				}
-				fmt.Printf("[%s] created!\n", path)
+				fmt.Printf("[%s] created!\n", s[1])
 			} else if s[0] == "set" {
-				_, err := conn.Set(s[1], []byte(s[2]), 0)
+				err := conn.Set(s[1], s[2])
 				if err != nil {
 					panic(err)
 				}

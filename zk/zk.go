@@ -25,7 +25,7 @@ func (zk *ZK) dial() error {
 			zk.state = StateConnected
 			return nil
 		}
-		log.Printf("Failed to connect to %s: %+v", zk.servers[zk.serversIndex], err)
+		log.Printf("%+v", err)
 	}
 	// 报告所有IP不通
 	return ErrZoneDown
@@ -178,7 +178,7 @@ func (zk *ZK) recvLoop() error {
 		zk.conn.SetReadDeadline(time.Time{})
 
 		res := responseHeader{}
-		_, err = decodePacket(buf[:16], &res) // 对前16个字节进行解码，其中Xid占4字节，Zxid占8字节，Err占4字节
+		_, err = decodePacket(buf[:16], &res) // Xid占4字节，Zxid占8字节，Err占4字节
 		if err != nil {
 			return err
 		}
@@ -251,14 +251,13 @@ func (zk *ZK) nextXid() int32 {
 // 连接到ZK服务器，如果成功，返回一个ZK实例
 func (zk *ZK) connect(servers []string, recvTimeout time.Duration) {
 	// 先是个无限循环，这样某台机宕掉了，程序就会尝试其它机
-	// 不过这样的话，如果所有机都宕了（所有IP不通），那不就是死循环了？！
-	// 所以先这样搞，就是将主机列表都扫过一遍后如果还没成，就退出算了，当作zone挂了
 	for {
 		// 如果所有IP都没拔通，则报错退出
 		err := zk.dial()
-		if err != nil {
-			log.Println(err)
-			return
+		if err == ErrZoneDown {
+			log.Printf("%+v", err)
+			time.Sleep(5 * time.Second) // 5秒后重试
+			continue
 		}
 		// 拔通则进行认证
 		err = zk.authenticate()
