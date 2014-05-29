@@ -6,7 +6,7 @@ import ()
 type responseHeader struct {
 	Xid  int32 // -2表示ping的响应，-4表示auth的响应，-1表示本次响应有watch事件发生
 	Zxid int64
-	Err  int32
+	Err  ErrCode
 }
 
 // 响应结构

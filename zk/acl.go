@@ -13,6 +13,16 @@ type ACL struct {
 	Id     string
 }
 
+// ACL的权限值
+const (
+	PermRead   = 1 << iota // 读权限，可以获取当前节点的数据，可以列出当前节点所有的子节点
+	PermWrite              // 写权限，可以向当前node写数据
+	PermCreate             // 创建权限，可以在在当前节点下创建子节点
+	PermDelete             // 删除权限，可以删除当前的节点
+	PermAdmin              // 管理权限，可以设置当前节点的权限
+	PermAll    = 0x1f      // 所有权限
+)
+
 // 代表某一特定的用户（客户端）
 func WorldACL(perms int32) []ACL {
 	return []ACL{{perms, "world", "anyone"}}

@@ -11,14 +11,48 @@ import (
 	"time"
 )
 
-// 进行TCP拔号
+// Zookeeper的数据结构
+type ZK struct {
+	lastZxid          int64              // 最后修改的节点
+	xid               int32              // 用来标记请求的版本号，是一个递增值
+	servers           []string           // 服务器地址集合
+	serversIndex      int                // 当前连接的服务器序号
+	conn              net.Conn           // 标准库里的TCP连接结构体
+	connectTimeout    time.Duration      // 连接超时，其实是指拔号超时
+	sessionId         int64              // 会话Id
+	sessionTimeout    int32              // 会话超时
+	password          []byte             // 密码
+	state             int32              // 连接状态
+	heartbeatInterval time.Duration      // 心跳间隔，一般为接收超时的一半
+	recvTimeout       time.Duration      // 接收超时，一般为心跳的两倍
+	shouldQuit        chan bool          // 是否退出
+	sendChan          chan *request      // 请求信道，客户端把要发送的请求丢到这里，可以实现同步
+	requests          map[int32]*request // 正在准备的请求映射，在请求结构中有Xid，可用来对应哪个请求
+	requestsLock      sync.Mutex         // 请求锁
+	reconnectDelay    time.Duration      // 延迟重连时间
+
+}
+
+// Znode状态的数据结构，基本不想理它
+type Stat struct {
+	Czxid          int64 // 节点被创建的Zxid值
+	Mzxid          int64 // 节点被修改的Zxid值
+	Ctime          int64 // 节点被创建的时间
+	Mtime          int64 // 节点被修改的时间
+	Version        int32 // 节点数据修改的版本号
+	CVersion       int32 // 节点的子节点被修改的版本号
+	AVersion       int32 // 节点的ACL被修改的版本号
+	EphemeralOwner int64 // 如果不是临时节点，值为0，否则为节点拥有者的会话Id
+	DataLength     int32 // 节点数据长度
+	NumChildren    int32 // 节点的子节点数量
+	Pzxid          int64 // 最后修改子节点
+}
+
+// TCP拔号，只要有一个IP拔通就正常返回，否则报错
 func (zk *ZK) dial() error {
-	var conn net.Conn
-	var err error = nil
 	zk.state = StateConnecting
-	// 尝试所有IP，一有成功拔号的，马上跳出
 	for index, serverip := range zk.servers {
-		conn, err = net.DialTimeout("tcp", serverip, zk.connectTimeout)
+		conn, err := net.DialTimeout("tcp", serverip, zk.connectTimeout)
 		if err == nil {
 			zk.conn = conn
 			zk.serversIndex = index
@@ -27,14 +61,12 @@ func (zk *ZK) dial() error {
 		}
 		log.Printf("%+v", err)
 	}
-	// 报告所有IP不通
-	return ErrZoneDown
+	return ErrDialingFaild
 }
 
-// 进行连接认证
+// 连接认证
 func (zk *ZK) authenticate() error {
 	buf := make([]byte, 256)
-
 	connectRequest := &connectRequest{
 		ProtocolVersion: protocolVersion,
 		LastZxidSeen:    zk.lastZxid,
@@ -42,7 +74,6 @@ func (zk *ZK) authenticate() error {
 		SessionId:       zk.sessionId,
 		Passwd:          zk.password,
 	}
-
 	var n int
 	n, err := encodePacket(buf[4:], connectRequest)
 	binary.BigEndian.PutUint32(buf[:4], uint32(n))
@@ -206,7 +237,7 @@ func (zk *ZK) recvLoop() error {
 				log.Printf("Response for unknown request with xid %d", res.Xid)
 			} else {
 				if res.Err != 0 {
-					err = int32ToError[res.Err]
+					err = errCodeToError[res.Err]
 				} else {
 					_, err = decodePacket(buf[16:16+packetLen], req.recvStruct)
 				}
@@ -248,15 +279,14 @@ func (zk *ZK) nextXid() int32 {
 	return atomic.AddInt32(&zk.xid, 1)
 }
 
-// 连接到ZK服务器，如果成功，返回一个ZK实例
+// 连接到ZK服务器，这是个无限循环，如果当前机子宕掉，程序就会尝试其它的机子
 func (zk *ZK) connect(servers []string, recvTimeout time.Duration) {
-	// 先是个无限循环，这样某台机宕掉了，程序就会尝试其它机
 	for {
-		// 如果所有IP都没拔通，则报错退出
+		// 进行拔号，若失败，则按设置的延迟时间进行重试
 		err := zk.dial()
-		if err == ErrZoneDown {
+		if err == ErrDialingFaild {
 			log.Printf("%+v", err)
-			time.Sleep(5 * time.Second) // 5秒后重试
+			time.Sleep(zk.reconnectDelay)
 			continue
 		}
 		// 拔通则进行认证

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 	"zk"
@@ -11,8 +12,8 @@ import (
 
 var (
 	TESTIP = []string{
-		"172.19.32.16",
-		//"192.168.56.101",
+		//"172.19.32.16",
+		"192.168.56.101",
 	}
 )
 
@@ -28,6 +29,23 @@ func main() {
 
 	conn := zk.Connect(TESTIP, time.Second)
 	defer conn.Close()
+
+	go func() {
+		err := conn.DeleteRecur("/ymb")
+		if err != nil {
+			panic(err)
+		}
+		if flag, err := conn.Exists("/ymb"); err == nil && !flag {
+			conn.Create("/ymb", "", zk.WorldACL(zk.PermAll), 0)
+		}
+		for i := 1; i < 1500; i++ {
+			if flag, err := conn.Exists("/ymb/" + strconv.Itoa(i)); err == nil && !flag {
+				conn.Create("/ymb/"+strconv.Itoa(i), "", zk.WorldACL(zk.PermAll), 0)
+			}
+			fmt.Println(i)
+		}
+	}()
+
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		data, _, _ := reader.ReadLine()
