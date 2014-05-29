@@ -191,8 +191,8 @@ func (zk *ZK) sendLoop(closeChan <-chan bool) error {
 
 // 循环接收服务器消息
 func (zk *ZK) recvLoop() error {
-	buf := make([]byte, bufferSize)
 	for {
+		buf := make([]byte, bufferSize)
 		zk.conn.SetReadDeadline(time.Now().Add(zk.recvTimeout))
 		_, err := io.ReadFull(zk.conn, buf[:4])
 		if err != nil {
