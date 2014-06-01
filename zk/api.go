@@ -14,20 +14,20 @@ func Connect(servers []string, recvTimeout time.Duration) *ZK {
 		}
 	}
 	zk := ZK{
-		servers:           servers,                                  // 服务器地址集合
-		serversIndex:      0,                                        // 连接到的服务器下标
-		conn:              nil,                                      //
-		connectTimeout:    1 * time.Second,                          // 连接超时为1秒
-		sessionId:         0,                                        // 会话Id，第一次连接会重服务端获取
-		sessionTimeout:    86400,                                    // 会话超时为一天，呵呵
-		password:          emptyPassword,                            // 密码
-		state:             StateDisconnected,                        // 连接状态
+		servers:           servers, // 服务器地址集合
+		serversIndex:      0, // 连接到的服务器下标
+		conn:              nil, //
+		connectTimeout:    1 * time.Second, // 连接超时为1秒
+		sessionId:         0, // 会话Id，第一次连接会重服务端获取
+		sessionTimeout:    86400, // 会话超时为一天，呵呵
+		password:          emptyPassword, // 密码
+		state:             StateDisconnected, // 连接状态
 		heartbeatInterval: time.Duration((int64(recvTimeout) >> 1)), // 心跳周期，为接收超时的一半
-		recvTimeout:       recvTimeout,                              // 接收超时
-		shouldQuit:        make(chan bool),                          //
-		sendChan:          make(chan *request, sendChanSize),        // 消息队列，队列里的每个消息为一个请求
-		requests:          make(map[int32]*request),                 // 请求映射
-		reconnectDelay:    5 * time.Second,                          // 延迟重连的时间
+		recvTimeout:       recvTimeout, // 接收超时
+		shouldQuit:        make(chan bool), //
+		sendChan:          make(chan *request, sendChanSize), // 消息队列，队列里的每个消息为一个请求
+		requests:          make(map[int32]*request), // 请求映射
+		reconnectDelay:    5 * time.Second, // 延迟重连的时间
 	}
 	go func() {
 		zk.connect(servers, recvTimeout)

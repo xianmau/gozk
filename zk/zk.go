@@ -95,7 +95,6 @@ func (zk *ZK) authenticate() error {
 	if err != nil {
 		return err // 读出错
 	}
-	log.Println(buf[:n])
 	recv := connectResponse{}
 	_, err = decodePacket(buf[:n], &recv)
 	if err != nil {

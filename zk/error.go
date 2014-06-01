@@ -32,22 +32,22 @@ var (
 
 var (
 	errCodeToError = map[ErrCode]error{
-		errOk:                      nil,
-		errAPIError:                ErrAPIError,
-		errNoNode:                  ErrNoNode,
-		errNoAuth:                  ErrNoAuth,
-		errBadVersion:              ErrBadVersion,
-		errNoChildrenForEphemerals: ErrNoChildrenForEphemerals,
-		errNodeExists:              ErrNodeExists,
-		errNotEmpty:                ErrNotEmpty,
-		errSessionExpired:          ErrSessionExpired,
-		errInvalidCallback:         ErrInvalidCallback,
-		errInvalidAcl:              ErrInvalidACL,
-		errAuthFailed:              ErrAuthFailed,
-		errClosing:                 ErrClosing,
-		errNothing:                 ErrNothing,
-		errSessionMoved:            ErrSessionMoved,
-	}
+	errOk:                      nil,
+	errAPIError:                ErrAPIError,
+	errNoNode:                  ErrNoNode,
+	errNoAuth:                  ErrNoAuth,
+	errBadVersion:              ErrBadVersion,
+	errNoChildrenForEphemerals: ErrNoChildrenForEphemerals,
+	errNodeExists:              ErrNodeExists,
+	errNotEmpty:                ErrNotEmpty,
+	errSessionExpired:          ErrSessionExpired,
+	errInvalidCallback:         ErrInvalidCallback,
+	errInvalidAcl:              ErrInvalidACL,
+	errAuthFailed:              ErrAuthFailed,
+	errClosing:                 ErrClosing,
+	errNothing:                 ErrNothing,
+	errSessionMoved:            ErrSessionMoved,
+}
 )
 
 const (

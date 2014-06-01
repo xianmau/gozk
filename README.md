@@ -4,7 +4,7 @@ Zookeeper Client API in Golang
 特别声明
 --------
  
-- 主要参考和大部分照抄了[https://github.com/samuel/go-zookeeper](https://github.com/samuel/go-zookeeper)
+- 主要参考了[https://github.com/samuel/go-zookeeper](https://github.com/samuel/go-zookeeper)里面的协议
 
 这么折腾是为何？
 ---------------
@@ -33,6 +33,7 @@ Zookeeper Client API in Golang
 更新记录
 --------
 
+- 2014.06 几乎又重写了一遍，为什么呢？因为我发现我的代码跟参考代码差不多，但速度居然比人家的慢，不开心
 - 2014.05 估计不会有什么更新，呵呵
 
 
