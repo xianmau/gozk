@@ -4,7 +4,7 @@ const (
 	protocolVersion = 0           // 协议版本
 	defaultPort     = 2181        // 默认端口
 	bufferSize      = 1024 * 1024 // 缓冲区大小，单位是字节，这里是1M
-	sendChanSize    = 16          // 信道的缓冲大小
+	sendChanSize    = 64          // 信道的缓冲大小
 )
 
 var (

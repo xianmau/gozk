@@ -51,8 +51,8 @@ type Stat struct {
 // TCP拔号，只要有一个IP拔通就正常返回，否则报错
 func (zk *ZK) dial() error {
 	zk.state = StateConnecting
-	for index, serverip := range zk.servers {
-		conn, err := net.DialTimeout("tcp", serverip, zk.connectTimeout)
+	for index := range zk.servers {
+		conn, err := net.DialTimeout("tcp", zk.servers[index], zk.connectTimeout)
 		if err == nil {
 			zk.conn = conn
 			zk.serversIndex = index
@@ -74,8 +74,10 @@ func (zk *ZK) authenticate() error {
 		SessionId:       zk.sessionId,
 		Passwd:          zk.password,
 	}
-	var n int
 	n, err := encodePacket(buf[4:], connectRequest)
+	if err != nil {
+		return err // 编码出错
+	}
 	binary.BigEndian.PutUint32(buf[:4], uint32(n))
 	_, err = zk.conn.Write(buf[:n+4])
 	if err != nil {
@@ -93,6 +95,7 @@ func (zk *ZK) authenticate() error {
 	if err != nil {
 		return err // 读出错
 	}
+	log.Println(buf[:n])
 	recv := connectResponse{}
 	_, err = decodePacket(buf[:n], &recv)
 	if err != nil {
@@ -190,11 +193,12 @@ func (zk *ZK) sendLoop(closeChan <-chan bool) error {
 }
 
 // 循环接收服务器消息
-func (zk *ZK) recvLoop() error {
+func (zk *ZK) recvLoop(conn net.Conn) error {
+	buf := make([]byte, bufferSize)
 	for {
-		buf := make([]byte, bufferSize)
-		zk.conn.SetReadDeadline(time.Now().Add(zk.recvTimeout))
-		_, err := io.ReadFull(zk.conn, buf[:4])
+		buf = make([]byte, bufferSize)
+		conn.SetReadDeadline(time.Now().Add(zk.recvTimeout))
+		_, err := io.ReadFull(conn, buf[:4])
 		if err != nil {
 			return err
 		}
@@ -202,11 +206,11 @@ func (zk *ZK) recvLoop() error {
 		if cap(buf) < packetLen {
 			buf = make([]byte, packetLen)
 		}
-		_, err = io.ReadFull(zk.conn, buf[:packetLen])
+		_, err = io.ReadFull(conn, buf[:packetLen])
 		if err != nil {
 			return err
 		}
-		zk.conn.SetReadDeadline(time.Time{})
+		conn.SetReadDeadline(time.Time{})
 
 		res := responseHeader{}
 		_, err = decodePacket(buf[:16], &res) // Xid占4字节，Zxid占8字节，Err占4字节
@@ -222,7 +226,7 @@ func (zk *ZK) recvLoop() error {
 		} else if res.Xid < 0 {
 			log.Printf("Xid < 0 (%d) but not ping or watcher event", res.Xid)
 		} else {
-			if res.Xid > 0 {
+			if res.Zxid > 0 {
 				zk.lastZxid = res.Zxid // 更新一下zxid
 			}
 
@@ -312,7 +316,7 @@ func (zk *ZK) connect(servers []string, recvTimeout time.Duration) {
 			}()
 			wg.Add(1)
 			go func() {
-				err = zk.recvLoop()
+				err = zk.recvLoop(zk.conn)
 				if err == nil {
 					panic("zk: recvLoop should never return nil error")
 				}
