@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 	"zk"
@@ -12,42 +11,46 @@ import (
 
 var (
 	TESTIP = []string{
-	//"172.19.32.16",
-	"192.168.56.101",
-}
+		"172.19.32.16",
+		//"192.168.56.101",
+	}
 )
 
 func main() {
+
 	fmt.Println("You can use the following commands:")
-	fmt.Println("create path data")
-	fmt.Println("set path data")
 	fmt.Println("exist path")
+	fmt.Println("create path data")
 	fmt.Println("get path")
+	fmt.Println("set path data")
 	fmt.Println("ls path")
 	fmt.Println("del path")
+	fmt.Println("delrec path")
 	fmt.Println("Or you will enter 'quit' to exit.")
 
-	conn := zk.Connect(TESTIP, time.Second)
-	defer conn.Close()
+	conn := zk.New()
+	err := conn.Connect(TESTIP)
+	if err != nil {
+		panic(err)
+	}
 
-	go func() {
-		err := conn.DeleteRecur("/ymb")
-		if err != nil {
-			panic(err)
-		}
-		if flag, err := conn.Exists("/ymb"); err == nil && !flag {
-			conn.Create("/ymb", "", zk.WorldACL(zk.PermAll), 0)
-		}
-		for i := 1; i < 1500; i++ {
-			if flag, err := conn.Exists("/ymb/" + strconv.Itoa(i)); err == nil && !flag {
-				conn.Create("/ymb/"+strconv.Itoa(i), "", zk.WorldACL(zk.PermAll), 0)
+	go func(conn *zk.ZkCli) {
+		heartbeetTicker := time.NewTicker(2 * time.Second)
+		defer heartbeetTicker.Stop()
+		for {
+
+			select {
+			case <-heartbeetTicker.C:
+				conn.Ping()
 			}
-			fmt.Println(i)
 		}
-	}()
+	}(conn)
+
+	defer conn.Close()
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
+		fmt.Printf(" > ")
 		data, _, _ := reader.ReadLine()
 		cmd := string(data)
 		s := strings.Split(cmd, " ")
@@ -80,16 +83,22 @@ func main() {
 					panic(err)
 				}
 				fmt.Printf("[%s] delete!\n", s[1])
+			} else if s[0] == "delrec" {
+				err := conn.DeleteRecur(s[1])
+				if err != nil {
+					panic(err)
+				}
+				fmt.Printf("[%s] delete!\n", s[1])
 			}
 		} else if len(s) == 3 {
 			if s[0] == "create" {
-				err := conn.Create(s[1], s[2], zk.WorldACL(zk.PermAll), 0)
+				err := conn.Create(s[1], []byte(s[2]))
 				if err != nil {
 					panic(err)
 				}
 				fmt.Printf("[%s] created!\n", s[1])
 			} else if s[0] == "set" {
-				err := conn.Set(s[1], s[2])
+				err := conn.Set(s[1], []byte(s[2]))
 				if err != nil {
 					panic(err)
 				}
