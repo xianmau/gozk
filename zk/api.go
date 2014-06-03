@@ -14,6 +14,7 @@ func New() *ZkCli {
 		password:        []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 		conn:            nil,
 		state:           stateDisconnect,
+		sentchan:        make(chan *request, SentChanSize),
 	}
 	return &zkCli
 }
@@ -37,9 +38,9 @@ func (zk *ZkCli) Connect(servers []string) error {
 }
 
 // API：Ping
-func (zk *ZkCli) Ping() error {
-	return zk.ping()
-}
+//func (zk *ZkCli) Ping() error {
+//	return zk.ping()
+//}
 
 // API：关闭连接
 func (zk *ZkCli) Close() error {

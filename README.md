@@ -26,8 +26,8 @@ Zookeeper Client API in Golang
 
 - 搭好Go环境，装好git
 - 设置好GOPATH
-- go get github.com/xianmau/gozk
-- import "github.com/xianmau/gozk"
+- go get github.com/xianmau/gozk/zk
+- import "github.com/xianmau/gozk/zk"
 - ...
 
 更新记录

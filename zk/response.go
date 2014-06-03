@@ -29,6 +29,8 @@ type closeResponse struct {
 }
 
 func decodeCloseResponse(buf []byte, res *closeResponse) {
+	//byte_cnt := BytesToInt32(buf[0:])
+	buf = buf[4:]
 	res.xid = BytesToInt32(buf[0:])
 	res.zxid = BytesToInt64(buf[4:])
 	res.errcode = BytesToInt32(buf[12:])
@@ -42,6 +44,8 @@ type pingResponse struct {
 }
 
 func decodePingResponse(buf []byte, res *pingResponse) {
+	//byte_cnt := BytesToInt32(buf[0:])
+	buf = buf[4:]
 	res.xid = BytesToInt32(buf[0:])
 	res.zxid = BytesToInt64(buf[4:])
 	res.errcode = BytesToInt32(buf[12:])
@@ -56,6 +60,8 @@ type existResponse struct {
 }
 
 func decodeExistResponse(buf []byte, res *existResponse) {
+	//byte_cnt := BytesToInt32(buf[0:])
+	buf = buf[4:]
 	res.xid = BytesToInt32(buf[0:])
 	res.zxid = BytesToInt64(buf[4:])
 	res.errcode = BytesToInt32(buf[12:])
@@ -117,6 +123,8 @@ type createResponse struct {
 }
 
 func decodeCreateResponse(buf []byte, res *createResponse) {
+	//byte_cnt := BytesToInt32(buf[0:])
+	buf = buf[4:]
 	res.xid = BytesToInt32(buf[0:])
 	res.zxid = BytesToInt64(buf[4:])
 	res.errcode = BytesToInt32(buf[12:])
@@ -131,6 +139,8 @@ type setResponse struct {
 }
 
 func decodeSetResponse(buf []byte, res *setResponse) {
+	//byte_cnt := BytesToInt32(buf[0:])
+	buf = buf[4:]
 	res.xid = BytesToInt32(buf[0:])
 	res.zxid = BytesToInt64(buf[4:])
 	res.errcode = BytesToInt32(buf[12:])
@@ -144,6 +154,8 @@ type deleteResponse struct {
 }
 
 func decodeDeleteResponse(buf []byte, res *deleteResponse) {
+	//byte_cnt := BytesToInt32(buf[0:])
+	buf = buf[4:]
 	res.xid = BytesToInt32(buf[0:])
 	res.zxid = BytesToInt64(buf[4:])
 	res.errcode = BytesToInt32(buf[12:])

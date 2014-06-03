@@ -5,6 +5,14 @@ package zk
  * 请求协议
  *
  ----------------------------------------------*/
+type request struct {
+	xid    int32
+	opcode int32
+	req    []byte
+	res    []byte
+	err    error
+	done   chan bool
+}
 
 // Connect
 type connectRequest struct {

@@ -8,8 +8,11 @@ import (
 const (
 	DefaultPort    = 2181
 	RecvTimeout    = 1          // 接收消息超时，单位：秒
-	SessionTimeout = 40000      // 客户端会话超时，单位：秒
+	SessionTimeout = 4000       // 客户端会话超时，单位：毫秒
+	PingInterval   = 2000       // Ping超时,单位：毫秒
 	BufferSize     = 512 * 1024 // 512KB
+	SentChanSize   = 64         //
+	RecvChanSize   = 64         //
 )
 
 type ZkCli struct {
@@ -19,6 +22,52 @@ type ZkCli struct {
 	password        []byte
 	conn            *net.TCPConn
 	state           int32
+	sentchan        chan *request
+}
+
+func (zkCli *ZkCli) sentLoop() {
+	// 设置心跳定时器
+	pingTicker := time.NewTicker(PingInterval)
+	defer pingTicker.Stop()
+
+	buf := make([]byte, BufferSize)
+	for {
+		// 用select语句可以保证在高并发下心跳与请求不同时执行
+		select {
+		case req := <-zkCli.sentchan: // 捕获到客户端请求
+			// 发送请求
+			zkCli.conn.SetWriteDeadline(time.Now().Add(RecvTimeout * time.Second))
+			_, err := zkCli.conn.Write(req.req)
+			zkCli.conn.SetWriteDeadline(time.Time{})
+			if err != nil {
+				req.err = err
+				req.done <- true
+				continue
+			}
+
+			// 如果收到关闭连接的请求，则断开连接不再接收请求，暂不支持自动重连
+			if req.opcode == opClose {
+				req.err = nil
+				req.done <- true
+				return
+			}
+
+			// 获取响应
+			zkCli.conn.SetReadDeadline(time.Now().Add(RecvTimeout * time.Second))
+			_, err = zkCli.conn.Read(buf)
+			zkCli.conn.SetReadDeadline(time.Time{})
+			if err != nil {
+				req.err = err
+				req.done <- true
+				continue
+			}
+			req.res = buf
+			req.err = err
+			req.done <- true
+		case <-pingTicker.C: // 发送心跳
+			zkCli.ping()
+		}
+	}
 }
 
 func (zkCli *ZkCli) connect(serverAddr string) error {
@@ -26,10 +75,9 @@ func (zkCli *ZkCli) connect(serverAddr string) error {
 	tcpAddr, err := net.ResolveTCPAddr("tcp4", serverAddr)
 	conn, err := net.DialTCP("tcp", nil, tcpAddr)
 	if err != nil {
-		return err // 算连接超时
+		return err // 连接超时
 	}
 	zkCli.conn = conn
-
 	// 连接认证
 	buf := make([]byte, 128)
 	n := encodeConnectRequest(buf, &connectRequest{
@@ -57,6 +105,11 @@ func (zkCli *ZkCli) connect(serverAddr string) error {
 	zkCli.sessiontimeout = res.timeout
 	zkCli.sessionid = res.sessionid
 	zkCli.password = res.password
+	// 循环发送请求
+	go func() {
+		zkCli.sentLoop()
+	}()
+	// 连接成功
 	return nil
 }
 
@@ -66,17 +119,23 @@ func (zkCli *ZkCli) close() error {
 		xid:    0,
 		opcode: opClose,
 	})
-	zkCli.conn.SetWriteDeadline(time.Now().Add(RecvTimeout * time.Second))
-	_, err := zkCli.conn.Write(buf[:n])
-	zkCli.conn.SetWriteDeadline(time.Time{})
-	if err != nil {
-		logger.Println(err)
-		return err
+	req := &request{
+		xid:    0,
+		opcode: opClose,
+		req:    buf[:n],
+		res:    nil,
+		err:    nil,
+		done:   make(chan bool, 1),
 	}
-	err = zkCli.conn.Close()
-	if err != nil {
-		logger.Println(err)
-		return err
+	zkCli.sentchan <- req
+	select {
+	case <-req.done:
+		if req.err == nil {
+			close(zkCli.sentchan)
+			zkCli.conn.Close()
+			return nil
+		}
+		return req.err
 	}
 	return nil
 }
@@ -101,8 +160,8 @@ func (zkCli *ZkCli) ping() error {
 		logger.Println(err)
 		return err
 	}
-	res := &pingResponse{}
-	decodePingResponse(buf[4:], res)
+	//res := &pingResponse{}
+	//decodePingResponse(buf, res)
 	return nil
 }
 
@@ -114,26 +173,28 @@ func (zkCli *ZkCli) exists(path string) (bool, error) {
 		path:   path,
 		watch:  false,
 	})
-	zkCli.conn.SetWriteDeadline(time.Now().Add(RecvTimeout * time.Second))
-	_, err := zkCli.conn.Write(buf[:n])
-	zkCli.conn.SetWriteDeadline(time.Time{})
-	if err != nil {
-		logger.Println(err)
-		return false, err
+	req := &request{
+		xid:    0,
+		opcode: opExists,
+		req:    buf[:n],
+		res:    nil,
+		err:    nil,
+		done:   make(chan bool, 1),
 	}
-	zkCli.conn.SetReadDeadline(time.Now().Add(RecvTimeout * time.Second))
-	_, err = zkCli.conn.Read(buf)
-	zkCli.conn.SetReadDeadline(time.Time{})
-	if err != nil {
-		logger.Println(err)
-		return false, err
-	}
-	res := &existResponse{}
-	decodeExistResponse(buf[4:], res)
-	if res.errcode == 0 {
-		return true, nil
-	} else if res.errcode == 101 {
-		return false, nil
+	zkCli.sentchan <- req
+	select {
+	case <-req.done:
+		if req.err == nil {
+			buf = req.res
+			res := &existResponse{}
+			decodeExistResponse(buf, res)
+			if res.errcode == 0 {
+				return true, nil
+			} else if res.errcode == 101 {
+				return false, nil
+			}
+		}
+		return false, req.err
 	}
 	return false, nil
 }
@@ -146,23 +207,26 @@ func (zkCli *ZkCli) get(path string) ([]byte, error) {
 		path:   path,
 		watch:  false,
 	})
-	zkCli.conn.SetWriteDeadline(time.Now().Add(RecvTimeout * time.Second))
-	_, err := zkCli.conn.Write(buf[:n])
-	zkCli.conn.SetWriteDeadline(time.Time{})
-	if err != nil {
-		logger.Println(err)
-		return nil, err
+	req := &request{
+		xid:    0,
+		opcode: opGet,
+		req:    buf[:n],
+		res:    nil,
+		err:    nil,
+		done:   make(chan bool, 1),
 	}
-	zkCli.conn.SetReadDeadline(time.Now().Add(RecvTimeout * time.Second))
-	_, err = zkCli.conn.Read(buf)
-	zkCli.conn.SetReadDeadline(time.Time{})
-	if err != nil {
-		logger.Println(err)
-		return nil, err
+	zkCli.sentchan <- req
+	select {
+	case <-req.done:
+		if req.err == nil {
+			buf = req.res
+			res := &getResponse{}
+			decodeGetResponse(buf, res)
+			return res.data, nil
+		}
+		return nil, req.err
 	}
-	res := &getResponse{}
-	decodeGetResponse(buf, res)
-	return res.data, nil
+	return []byte{}, nil
 }
 
 func (zkCli *ZkCli) children(path string) ([]string, error) {
@@ -173,23 +237,26 @@ func (zkCli *ZkCli) children(path string) ([]string, error) {
 		path:   path,
 		watch:  false,
 	})
-	zkCli.conn.SetWriteDeadline(time.Now().Add(RecvTimeout * time.Second))
-	_, err := zkCli.conn.Write(buf[:n])
-	zkCli.conn.SetWriteDeadline(time.Time{})
-	if err != nil {
-		logger.Println(err)
-		return nil, err
+	req := &request{
+		xid:    0,
+		opcode: opChildren,
+		req:    buf[:n],
+		res:    nil,
+		err:    nil,
+		done:   make(chan bool, 1),
 	}
-	zkCli.conn.SetReadDeadline(time.Now().Add(RecvTimeout * time.Second))
-	_, err = zkCli.conn.Read(buf)
-	zkCli.conn.SetReadDeadline(time.Time{})
-	if err != nil {
-		logger.Println(err)
-		return nil, err
+	zkCli.sentchan <- req
+	select {
+	case <-req.done:
+		if req.err == nil {
+			buf = req.res
+			res := &childrenResponse{}
+			decodeChildrenResponse(buf, res)
+			return res.children, nil
+		}
+		return nil, req.err
 	}
-	res := &childrenResponse{}
-	decodeChildrenResponse(buf, res)
-	return res.children, nil
+	return []string{}, nil
 }
 
 func (zkCli *ZkCli) create(path string, data []byte) error {
@@ -202,22 +269,25 @@ func (zkCli *ZkCli) create(path string, data []byte) error {
 		acl:    WorldACL, // 默认
 		flags:  0,        // 默认
 	})
-	zkCli.conn.SetWriteDeadline(time.Now().Add(RecvTimeout * time.Second))
-	_, err := zkCli.conn.Write(buf[:n])
-	zkCli.conn.SetWriteDeadline(time.Time{})
-	if err != nil {
-		logger.Println(err)
-		return err
+	req := &request{
+		xid:    0,
+		opcode: opCreate,
+		req:    buf[:n],
+		res:    nil,
+		err:    nil,
+		done:   make(chan bool, 1),
 	}
-	zkCli.conn.SetReadDeadline(time.Now().Add(RecvTimeout * time.Second))
-	_, err = zkCli.conn.Read(buf)
-	zkCli.conn.SetReadDeadline(time.Time{})
-	if err != nil {
-		logger.Println(err)
-		return err
+	zkCli.sentchan <- req
+	select {
+	case <-req.done:
+		//if req.err == nil {
+		//	buf = req.res
+		//	res := &createResponse{}
+		//	decodeCreateResponse(buf, res)
+		//	return nil
+		//}
+		return req.err
 	}
-	res := &createResponse{}
-	decodeCreateResponse(buf[4:], res)
 	return nil
 }
 
@@ -230,22 +300,25 @@ func (zkCli *ZkCli) set(path string, data []byte) error {
 		data:    data,
 		version: -1, // 默认
 	})
-	zkCli.conn.SetWriteDeadline(time.Now().Add(RecvTimeout * time.Second))
-	_, err := zkCli.conn.Write(buf[:n])
-	zkCli.conn.SetWriteDeadline(time.Time{})
-	if err != nil {
-		logger.Println(err)
-		return err
+	req := &request{
+		xid:    0,
+		opcode: opSet,
+		req:    buf[:n],
+		res:    nil,
+		err:    nil,
+		done:   make(chan bool, 1),
 	}
-	zkCli.conn.SetReadDeadline(time.Now().Add(RecvTimeout * time.Second))
-	_, err = zkCli.conn.Read(buf)
-	zkCli.conn.SetReadDeadline(time.Time{})
-	if err != nil {
-		logger.Println(err)
-		return err
+	zkCli.sentchan <- req
+	select {
+	case <-req.done:
+		//if req.err == nil {
+		//	buf = req.res
+		//	res := &setResponse{}
+		//	decodeSetResponse(buf, res)
+		//	return nil
+		//}
+		return req.err
 	}
-	res := &setResponse{}
-	decodeSetResponse(buf[4:], res)
 	return nil
 }
 
@@ -257,27 +330,24 @@ func (zkCli *ZkCli) delete(path string) error {
 		path:    path,
 		version: -1, // 默认
 	})
-	zkCli.conn.SetWriteDeadline(time.Now().Add(RecvTimeout * time.Second))
-	_, err := zkCli.conn.Write(buf[:n])
-	zkCli.conn.SetWriteDeadline(time.Time{})
-	if err != nil {
-		logger.Println(err)
-		return err
+	req := &request{
+		xid:    0,
+		opcode: opDelete,
+		req:    buf[:n],
+		res:    nil,
+		err:    nil,
+		done:   make(chan bool, 1),
 	}
-	zkCli.conn.SetReadDeadline(time.Now().Add(RecvTimeout * time.Second))
-	_, err = zkCli.conn.Read(buf)
-	zkCli.conn.SetReadDeadline(time.Time{})
-	if err != nil {
-		logger.Println(err)
-		return err
+	zkCli.sentchan <- req
+	select {
+	case <-req.done:
+		//if req.err == nil {
+		//	buf = req.res
+		//	res := &deleteResponse{}
+		//	decodeDeleteResponse(buf, res)
+		//	return nil
+		//}
+		return req.err
 	}
-	res := &deleteResponse{}
-	decodeDeleteResponse(buf[4:], res)
 	return nil
 }
-
-/*----------------------------------------------
- *
- * 以下是各个协议的结构以及它们的编码和解码
- *
- ----------------------------------------------*/
