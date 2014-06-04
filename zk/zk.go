@@ -7,12 +7,12 @@ import (
 
 const (
 	DefaultPort    = 2181
-	RecvTimeout    = 1          // 接收消息超时，单位：秒
-	SessionTimeout = 4000       // 客户端会话超时，单位：毫秒
-	PingInterval   = 2000       // Ping超时,单位：毫秒
-	BufferSize     = 512 * 1024 // 512KB
-	SentChanSize   = 64         //
-	RecvChanSize   = 64         //
+	RecvTimeout    = 1                // 接收消息超时，单位：秒
+	SessionTimeout = 4000             // 客户端会话超时，单位：毫秒
+	PingInterval   = 2000             // Ping超时,单位：毫秒
+	BufferSize     = 1024 * 1024 * 10 // 10M
+	SentChanSize   = 64               //
+	RecvChanSize   = 64               //
 )
 
 type ZkCli struct {
@@ -27,7 +27,7 @@ type ZkCli struct {
 
 func (zkCli *ZkCli) sentLoop() {
 	// 设置心跳定时器
-	pingTicker := time.NewTicker(PingInterval)
+	pingTicker := time.NewTicker(PingInterval * time.Millisecond)
 	defer pingTicker.Stop()
 
 	buf := make([]byte, BufferSize)

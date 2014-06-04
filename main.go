@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 	"zk"
 )
 
@@ -33,19 +32,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
-	go func(conn *zk.ZkCli) {
-		heartbeetTicker := time.NewTicker(2 * time.Second)
-		defer heartbeetTicker.Stop()
-		for {
-
-			select {
-			case <-heartbeetTicker.C:
-				conn.Ping()
-			}
-		}
-	}(conn)
-
 	defer conn.Close()
 
 	reader := bufio.NewReader(os.Stdin)

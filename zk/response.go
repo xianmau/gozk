@@ -99,7 +99,6 @@ type childrenResponse struct {
 func decodeChildrenResponse(buf []byte, res *childrenResponse) {
 	byte_cnt := BytesToInt32(buf[0:])
 	buf = buf[4:]
-	buf = make([]byte, BufferSize*10)
 	res.xid = BytesToInt32(buf[0:])
 	res.zxid = BytesToInt64(buf[4:])
 	res.errcode = BytesToInt32(buf[12:])
