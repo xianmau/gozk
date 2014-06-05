@@ -1,5 +1,9 @@
 package zk
 
+import (
+	"errors"
+)
+
 const (
 	opCreate   = 1
 	opDelete   = 2
@@ -33,10 +37,16 @@ const (
 	errClosing                 = -116
 	errNothing                 = -117
 	errSessionMoved            = -118
+	errConnectionDisabled      = -200 // 连接不可用
+	errChannelClosed           = -201 // 请求队列关闭
+	errEOF                     = -202 // 读结束
 )
 
 var (
 	errMap = map[int32]error{
 		errOk: nil,
+		errConnectionDisabled: errors.New("zk: connection disabled"),
+		errChannelClosed:      errors.New("zk: channel closed"),
+		errEOF:                errors.New("zk: end of file"),
 	}
 )

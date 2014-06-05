@@ -8,5 +8,5 @@ import (
 var logger *log.Logger
 
 func init() {
-	logger = log.New(os.Stderr, "[log]", log.Ldate|log.Ltime|log.Lshortfile)
+	logger = log.New(os.Stderr, "", log.Ldate|log.Ltime|log.Lshortfile)
 }

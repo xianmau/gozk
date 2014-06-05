@@ -10,8 +10,8 @@ import (
 
 var (
 	TESTIP = []string{
-		"172.19.32.16",
-		//"192.168.56.101",
+		//"172.19.32.16",
+		"192.168.56.101",
 	}
 )
 
@@ -32,7 +32,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer conn.Close()
+	//defer conn.Close()
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -50,7 +50,7 @@ func main() {
 				if err != nil {
 					panic(err)
 				}
-				fmt.Printf("List children of [%s]: %+v\n", s[1], children)
+				fmt.Printf("List children of [%d] [%s]: %+v\n", len(children), s[1], children)
 			} else if s[0] == "get" {
 				data, err := conn.Get(s[1])
 				if err != nil {
@@ -74,7 +74,7 @@ func main() {
 				if err != nil {
 					panic(err)
 				}
-				fmt.Printf("[%s] delete!\n", s[1])
+				fmt.Printf("[%s] recur delete!\n", s[1])
 			}
 		} else if len(s) == 3 {
 			if s[0] == "create" {
